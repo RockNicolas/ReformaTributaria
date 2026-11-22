@@ -1,0 +1,16 @@
+services:
+  motor:                      # calculadora oficial; NÃO é exposta fora da rede do compose
+    build:
+      context: .
+      dockerfile: Dockerfile.motor
+      args: { JDK_VERSION: "21", ENGINE_REF: "1.6.1" }
+    restart: unless-stopped
+  api:
+    build: .
+    depends_on: { motor: { condition: service_healthy } }
+    environment:
+      CALCULADORA_URL: http://motor:8080/api
+      MODO_CALCULADORA: oficial
+      API_KEYS: ${API_KEYS:-}          # ex.: API_KEYS=chave1,chave2 (vazio = sem auth, só dev)
+    ports: ["8000:8000"]
+    restart: unless-stopped

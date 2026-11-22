@@ -1,0 +1,23 @@
+# Motor oficial da Receita Federal (calculadora-rtc-regime-regular), versão FIXADA.
+# 1.6.1 = Java 21 / Spring Boot 3.5. A 1.7.x exige Java 25 e muda arredondamentos de centavos:
+# para trocar, ajuste as duas variáveis abaixo juntas (ENGINE_REF e JDK_VERSION).
+ARG JDK_VERSION=21
+FROM eclipse-temurin:${JDK_VERSION}-jdk AS build
+ARG ENGINE_REF=1.6.1
+RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*
+WORKDIR /src
+RUN git clone --depth 1 --branch ${ENGINE_REF} https://github.com/ReceitaFederal/calculadora-rtc-regime-regular.git .
+# Gera o banco SQLite offline (calculadora/db/calculadora-pro.db) e empacota o jar.
+RUN ./mvnw -B -q flyway:migrate -Dflyway.configFiles=./flyway/flyway-pro.conf \
+ && ./mvnw -B -q package -DskipTests
+
+FROM eclipse-temurin:${JDK_VERSION}-jre
+RUN useradd -r -u 10001 motor
+WORKDIR /app
+COPY --from=build /src/target/api-regime-geral.jar ./target/api-regime-geral.jar
+COPY --from=build /src/calculadora ./calculadora
+USER motor
+EXPOSE 8080
+HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
+  CMD wget -qO- http://localhost:8080/api/versao || exit 1
+CMD ["java", "-Dspring.profiles.active=offline", "-jar", "target/api-regime-geral.jar"]

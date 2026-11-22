@@ -1,0 +1,118 @@
+"""API FastAPI: diagnóstico em lote, conferência e validação de operação."""
+import logging
+import re
+from collections import OrderedDict
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
+
+from . import config
+from .calculadora import Calculadora, CalculadoraErro, transporte_mock
+from .diagnostico import Opcoes, diagnosticar
+from .nfe import NfeInvalida, ler_nfe
+from .relatorio import renderizar
+from .seguranca import exigir_acesso
+from .sugestoes import sugestao_para
+
+log = logging.getLogger("reforma")
+WEB = Path(__file__).resolve().parent.parent / "web"
+_UUID = re.compile(r"^[0-9a-f-]{36}$")
+_guardados: "OrderedDict[str, dict]" = OrderedDict()  # em memória; troque por banco em produção
+
+
+@asynccontextmanager
+async def ciclo(app: FastAPI):
+    mock = config.MODO_CALCULADORA == "mock"
+    app.state.calc = Calculadora(config.CALCULADORA_URL, config.MODO_CALCULADORA, config.TIMEOUT_S,
+                                 transport=transporte_mock() if mock else None)
+    yield
+    await app.state.calc.fechar()
+
+
+app = FastAPI(title="Reforma Tributária — Diagnóstico e Validação", version="0.2.0", lifespan=ciclo)
+
+
+@app.get("/saude")
+async def saude():
+    try:
+        v = await app.state.calc.versao()
+        return {"api": "ok", "calculadora": "ok", "versao": v, "modo": app.state.calc.modo}
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(503, f"Calculadora indisponível: {e}")
+
+
+@app.get("/", include_in_schema=False)
+async def inicio():
+    return FileResponse(WEB / "index.html")
+
+
+@app.post("/api/diagnosticos", dependencies=[Depends(exigir_acesso)])
+async def criar_diagnostico(
+    arquivos: list[UploadFile] = File(...),
+    modo: str = Form("simulacao"),
+    data_simulacao: str | None = Form(None),
+):
+    if modo not in ("simulacao", "conferencia"):
+        raise HTTPException(400, "modo deve ser 'simulacao' ou 'conferencia'.")
+    if len(arquivos) > 2000:
+        raise HTTPException(413, "Máximo de 2000 XMLs por diagnóstico.")
+    nfes, erros = [], []
+    for f in arquivos:
+        corpo = await f.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
+        if len(corpo) > config.MAX_UPLOAD_MB * 1024 * 1024:
+            erros.append(f"{f.filename}: maior que {config.MAX_UPLOAD_MB} MB")
+            continue
+        try:
+            nfes.append(ler_nfe(corpo))
+        except NfeInvalida as e:
+            erros.append(f"{f.filename}: {e}")
+    if not nfes:
+        raise HTTPException(422, {"mensagem": "Nenhuma NF-e válida.", "erros": erros})
+    o = Opcoes(modo=modo, **({"data_simulacao": data_simulacao} if data_simulacao else {}))
+    d = await diagnosticar(nfes, app.state.calc, o)
+    d["avisos"] = erros + d["avisos"]
+    _guardados[d["id"]] = d
+    while len(_guardados) > 200:
+        _guardados.popitem(last=False)
+    return d
+
+
+def _obter(id_: str) -> dict:
+    if not _UUID.match(id_) or id_ not in _guardados:
+        raise HTTPException(404, "Diagnóstico não encontrado.")
+    return _guardados[id_]
+
+
+@app.get("/api/diagnosticos/{id_}", dependencies=[Depends(exigir_acesso)])
+async def obter(id_: str):
+    return _obter(id_)
+
+
+@app.get("/api/diagnosticos/{id_}/relatorio.html", response_class=HTMLResponse,
+         dependencies=[Depends(exigir_acesso)])
+async def relatorio(id_: str, marca: str = ""):
+    return renderizar(_obter(id_), marca[:80])
+
+
+@app.post("/v1/validar", dependencies=[Depends(exigir_acesso)])
+async def validar(operacao: dict):
+    """Valida uma operação (mesmo corpo da calculadora) e devolve erros com ação sugerida."""
+    if not operacao.get("itens"):
+        raise HTTPException(422, "A operação precisa ter ao menos um item em 'itens'.")
+    try:
+        resp = await app.state.calc.observabilidade(operacao)
+    except CalculadoraErro as e:
+        raise HTTPException(502, f"Calculadora indisponível ou rejeitou a requisição: {e}")
+    itens, ok = [], True
+    for obj in resp.get("objetos", []):
+        bons = obj.get("estadoItem") in ("CALCULADO", "CALCULO_SIMULADO")
+        ok &= bons
+        itens.append({
+            "numero": obj.get("nObj"), "estado": obj.get("estadoItem"), "valido": bons,
+            "erros": [{"codigo": x.get("code"), "titulo": x.get("title"), "detalhe": x.get("detail"),
+                       "campo": x.get("pointer"), "sugestao": sugestao_para(x.get("code", ""))}
+                      for x in obj.get("erros") or []],
+        })
+    return {"valido": ok, "itens": itens, "modoCalculadora": app.state.calc.modo}

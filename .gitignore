@@ -1,4 +1,7 @@
+__pycache__/
+.pytest_cache/
+.venv/
 node_modules/
-data/
 saida/
-*.log
+data/
+.env
