@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
 WORKDIR /src
 RUN git clone --depth 1 --branch ${ENGINE_REF} https://github.com/ReceitaFederal/calculadora-rtc-regime-regular.git .
 # Gera o banco SQLite offline (calculadora/db/calculadora-pro.db) e empacota o jar.
-RUN ./mvnw -B -q flyway:migrate -Dflyway.configFiles=./flyway/flyway-pro.conf \
+RUN mkdir -p ./calculadora/db \
+ && ./mvnw -B -q flyway:migrate -Dflyway.configFiles=./flyway/flyway-pro.conf \
  && ./mvnw -B -q package -DskipTests
 
 FROM eclipse-temurin:${JDK_VERSION}-jre
