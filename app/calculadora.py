@@ -36,7 +36,7 @@ class Calculadora:
         raise ultimo or CalculadoraErro("falha desconhecida")
 
     async def versao(self) -> dict:
-        r = await self._c.get(f"{self.base_url}/versao")
+        r = await self._c.get(f"{self.base_url}/calculadora/dados-abertos/versao")
         r.raise_for_status()
         return r.json()
 
