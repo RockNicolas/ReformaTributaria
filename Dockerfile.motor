@@ -20,5 +20,5 @@ COPY --from=build /src/calculadora ./calculadora
 USER motor
 EXPOSE 8080
 HEALTHCHECK --interval=15s --timeout=5s --start-period=60s --retries=5 \
-  CMD wget -qO- http://localhost:8080/api/versao || exit 1
+  CMD bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080' || exit 1
 CMD ["java", "-Dspring.profiles.active=offline", "-jar", "target/api-regime-geral.jar"]
