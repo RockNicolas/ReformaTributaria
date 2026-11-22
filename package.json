@@ -1,0 +1,25 @@
+{
+  "name": "diagnostico-reforma",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Diagnóstico de Impacto da Reforma Tributária (CBS/IBS) a partir de XMLs de NF-e, usando a calculadora oficial da Receita Federal.",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "cli": "tsx src/cli.ts",
+    "mock": "tsx src/mock.ts",
+    "test": "tsx --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@fastify/multipart": "^9.0.0",
+    "fast-xml-parser": "^5.0.0",
+    "fastify": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- NF-e FICTÍCIA para testes. Dados inventados. -->
+<nfeProc xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <NFe>
+    <infNFe Id="NFe35261100000000000100550010000000011000000011" versao="4.00">
+      <ide>
+        <cUF>35</cUF>
+        <nNF>1</nNF>
+        <dhEmi>2026-11-10T10:00:00-03:00</dhEmi>
+        <cMunFG>3550308</cMunFG>
+      </ide>
+      <emit>
+        <CNPJ>00000000000100</CNPJ>
+        <xNome>Comércio Modelo S/A</xNome>
+        <enderEmit><UF>SP</UF></enderEmit>
+        <CRT>3</CRT>
+      </emit>
+      <det nItem="1">
+        <prod>
+          <cProd>001</cProd><xProd>Cimento CP-II 50kg</xProd><NCM>25232910</NCM><CFOP>5102</CFOP>
+          <uCom>SC</uCom><qCom>100.0000</qCom><vProd>1000.00</vProd>
+        </prod>
+        <imposto>
+          <ICMS><ICMS00><orig>0</orig><CST>00</CST><vICMS>180.00</vICMS></ICMS00></ICMS>
+          <PIS><PISAliq><CST>01</CST><vPIS>16.50</vPIS></PISAliq></PIS>
+          <COFINS><COFINSAliq><CST>01</CST><vCOFINS>76.00</vCOFINS></COFINSAliq></COFINS>
+          <IBSCBS><CST>000</CST><cClassTrib>000001</cClassTrib></IBSCBS>
+        </imposto>
+      </det>
+      <det nItem="2">
+        <prod>
+          <cProd>002</cProd><xProd>Vergalhão 10mm</xProd><NCM>72142000</NCM><CFOP>5102</CFOP>
+          <uCom>BR</uCom><qCom>200.0000</qCom><vProd>2000.00</vProd>
+        </prod>
+        <imposto>
+          <ICMS><ICMS00><orig>0</orig><CST>00</CST><vICMS>360.00</vICMS></ICMS00></ICMS>
+          <PIS><PISAliq><CST>01</CST><vPIS>33.00</vPIS></PISAliq></PIS>
+          <COFINS><COFINSAliq><CST>01</CST><vCOFINS>152.00</vCOFINS></COFINSAliq></COFINS>
+          <IBSCBS><CST>200</CST><cClassTrib>200028</cClassTrib></IBSCBS>
+        </imposto>
+      </det>
+      <det nItem="3">
+        <prod>
+          <cProd>003</cProd><xProd>Produto sem classificação</xProd><NCM>39269090</NCM><CFOP>5102</CFOP>
+          <uCom>UN</uCom><qCom>10.0000</qCom><vProd>300.00</vProd>
+        </prod>
+        <imposto>
+          <ICMS><ICMS00><orig>0</orig><CST>00</CST><vICMS>0.00</vICMS></ICMS00></ICMS>
+        </imposto>
+      </det>
+      <det nItem="4">
+        <prod>
+          <cProd>004</cProd><xProd>Item com NCM inconsistente</xProd><NCM>99999999</NCM><CFOP>5102</CFOP>
+          <uCom>UN</uCom><qCom>1.0000</qCom><vProd>500.00</vProd>
+        </prod>
+        <imposto>
+          <ICMS><ICMS00><orig>0</orig><CST>00</CST><vICMS>0.00</vICMS></ICMS00></ICMS>
+          <IBSCBS><CST>000</CST><cClassTrib>000001</cClassTrib></IBSCBS>
+        </imposto>
+      </det>
+    </infNFe>
+  </NFe>
+</nfeProc>
