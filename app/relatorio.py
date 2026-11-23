@@ -14,7 +14,7 @@ def pct(n: float) -> str:
 def renderizar(d: dict, marca: str = "") -> str:
     t, a = d["totais"], d["aliquotasSimulacao"]
     conf = d["modo"] == "conferencia"
-    var = "—" if t["variacaoPercentual"] is None else f"{t['variacaoPercentual']:+g}%".replace(".", ",")
+    var = "—" if (t["variacaoPercentual"] is None or conf) else f"{t['variacaoPercentual']:+g}%".replace(".", ",")
     mock = ('<div class="aviso teste"><strong>RESULTADO DE TESTE.</strong> Gerado por simulador, não pela '
             'calculadora da Receita Federal. Não use com clientes.</div>') if d["modoCalculadora"] == "mock" else ""
     linhas = "".join(
@@ -61,7 +61,7 @@ th{{text-align:left;font-size:10px;text-transform:uppercase;color:#56615B;paddin
 {mock}{sim}{parcial}
 <div class="kpis"><div class="kpi"><span class="mut">Carga atual (ICMS, PIS, COFINS, ISS){" · itens calculados" if d.get("amostraParcial") else ""}</span><b>{brl(t["cargaAtual"])}</b></div>
 <div class="kpi"><span class="mut">Carga {"calculada" if conf else "projetada"} (CBS + IBS)</span><b>{brl(t["cargaProjetada"])}</b></div>
-<div class="kpi"><span class="mut">Variação</span><b>{var}</b></div>
+<div class="kpi"><span class="mut">Variação{" (só na simulação)" if conf else ""}</span><b>{var}</b></div>
 <div class="kpi"><span class="mut">Itens com pendência</span><b>{d["itensComPendencia"]} de {d["itensTotal"]}</b></div></div>
 {div}<h2>Cadastros para corrigir</h2>
 {f'<table><thead><tr><th>Item</th><th>Problema</th><th>O que fazer</th><th class="num">Vezes</th><th class="num">Valor</th></tr></thead><tbody>{linhas}</tbody></table>' if linhas else "<p>Nenhuma pendência encontrada.</p>"}
