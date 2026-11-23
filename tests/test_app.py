@@ -146,3 +146,25 @@ def test_planilha_de_produtos(cliente):
     assert res == {"total": 4, "prontos": 1, "revisar": 1, "com_erro": 1, "sem_ncm": 1}
     assert "cst;cclasstrib" in r.text
     assert cliente.post("/api/planilha", files={"arquivo": ("p.csv", b"a;b\n1;2")}).status_code == 422
+
+
+def test_sienge_extrai_e_gera_cadastro(cliente):
+    import httpx, json
+    from app.conectores.sienge import ConectorErro, extrair_produtos
+    itens = [{"fiscalProductCode": "P1", "fiscalProductDescription": "Arroz", "ncmCode": "1006.10.10", "cfop": "5102"},
+             {"fiscalProductCode": "P1", "fiscalProductDescription": "Arroz", "ncmCode": "10061010"},
+             {"fiscalProductCode": "P2", "fiscalProductDescription": "Cimento", "ncmCode": "25232910"}]
+    assert [p["ncm"] for p in extrair_produtos(itens)] == ["10061010", "25232910"]
+    with pytest.raises(ConectorErro):
+        extrair_produtos([{"foo": 1}])
+
+    def h(req):
+        assert req.url.path.endswith("/bulk-data/v1/invoice-itens") and req.url.params["startDate"] == "2026-10-01"
+        return httpx.Response(200, json={"data": itens})
+    cliente.app.state.sienge_transport = httpx.MockTransport(h)
+    r = cliente.post("/api/sienge/cadastro-fiscal", data={"subdominio": "x", "usuario": "u", "senha": "s",
+                                                         "inicio": "2026-10-01", "fim": "2026-10-31"})
+    assert r.status_code == 200 and json.loads(r.headers["x-resumo"])["total"] == 2
+    cliente.app.state.sienge_transport = httpx.MockTransport(lambda q: httpx.Response(401))
+    assert cliente.post("/api/sienge/cadastro-fiscal", data={"subdominio": "x", "usuario": "u", "senha": "s",
+                                                            "inicio": "a", "fim": "b"}).status_code == 502

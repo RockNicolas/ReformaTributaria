@@ -15,7 +15,12 @@ button{background:#0F6B4F;color:#fff;border:0;margin-top:18px;cursor:pointer;fon
 <div class="card"><p>Envie a planilha de produtos (CSV com colunas <b>codigo;descricao;ncm</b>). Você recebe de volta a planilha com CST e cClassTrib sugeridos e conferidos pelo motor da Receita, pronta para importar no ERP.</p>
 <form id="g"><label>Planilha (CSV)</label><input type="file" id="pla" accept=".csv" required>
 <label>UF da empresa</label><input id="uf" value="SP" maxlength="2">
-<button id="b2">Gerar cadastro fiscal</button></form><div id="msg2"></div></div></main>
+<button id="b2">Gerar cadastro fiscal</button></form><div id="msg2"></div></div><h2 style="margin-top:36px">Direto do Sienge</h2>
+<div class="card"><p>Busca os itens das notas fiscais no Sienge (clientes em nuvem) e devolve o cadastro fiscal sugerido e conferido. As credenciais são usadas só nesta consulta e não ficam gravadas.</p>
+<form id="sg"><label>Subdomínio do Sienge</label><input id="sgsub" placeholder="ex.: minhaempresa" required>
+<label>Usuário da API</label><input id="sgusr" required><label>Senha da API</label><input id="sgpwd" type="password" required>
+<label>Período</label><div style="display:flex;gap:8px"><input type="date" id="sgi" required><input type="date" id="sgf" required></div>
+<button id="b3">Buscar no Sienge e gerar cadastro</button></form><div id="msg3"></div></div></main>
 <script>
 f.onsubmit=async e=>{e.preventDefault();b.disabled=true;msg.textContent="Calculando…";
 const fd=new FormData();for(const x of arq.files)fd.append("arquivos",x);fd.append("modo",modo.value);
@@ -36,4 +41,12 @@ if(!r.ok){const d=await r.json();throw new Error(JSON.stringify(d.detail??d))}
 const s=JSON.parse(r.headers.get("X-Resumo"));const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="cadastro-fiscal-pronto.csv";a.click();
 msg2.innerHTML=`<p><b>${s.total}</b> produtos: <b>${s.prontos}</b> prontos para importar · <b>${s.revisar}</b> para o contador revisar · <b>${s.com_erro}</b> com erro · <b>${s.sem_ncm}</b> sem NCM.</p><p>O arquivo foi baixado.</p>`;
 }catch(x){msg2.innerHTML=`<span class="err">${x.message}</span>`}b2.disabled=false};
+sg.onsubmit=async e=>{e.preventDefault();b3.disabled=true;msg3.textContent="Buscando no Sienge e conferindo no motor…";
+const fd=new FormData();fd.append("subdominio",sgsub.value);fd.append("usuario",sgusr.value);fd.append("senha",sgpwd.value);fd.append("inicio",sgi.value);fd.append("fim",sgf.value);
+const h=chave.value?{"X-API-Key":chave.value}:{};
+try{const r=await fetch("/api/sienge/cadastro-fiscal",{method:"POST",body:fd,headers:h});
+if(!r.ok){const d=await r.json();throw new Error(d.detail??JSON.stringify(d))}
+const s=JSON.parse(r.headers.get("X-Resumo"));const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="sienge-cadastro-fiscal.csv";a.click();
+msg3.innerHTML=`<p><b>${s.total}</b> produtos: <b>${s.prontos}</b> prontos · <b>${s.revisar}</b> para revisar · <b>${s.com_erro}</b> com erro · <b>${s.sem_ncm}</b> sem NCM.</p>`;
+}catch(x){msg3.innerHTML=`<span class="err">${x.message}</span>`}b3.disabled=false};
 </script></body></html>

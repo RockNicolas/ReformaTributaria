@@ -13,6 +13,7 @@ from . import config
 from .calculadora import Calculadora, CalculadoraErro, transporte_mock
 from .diagnostico import Opcoes, diagnosticar
 from . import planilha as pl
+from .conectores.sienge import ConectorErro, Sienge, extrair_produtos
 from .nfe import NfeInvalida, ler_nfe
 from .relatorio import renderizar
 from .seguranca import exigir_acesso
@@ -184,3 +185,26 @@ async def planilha_produtos(arquivo: UploadFile = File(...), uf: str = Form("SP"
         "Content-Disposition": 'attachment; filename="cadastro-fiscal-pronto.csv"',
         "X-Resumo": json.dumps(r),
         "Access-Control-Expose-Headers": "X-Resumo"})
+
+
+@app.post("/api/sienge/cadastro-fiscal", dependencies=[Depends(exigir_acesso)])
+async def sienge_cadastro_fiscal(subdominio: str = Form(...), usuario: str = Form(...), senha: str = Form(...),
+                                 inicio: str = Form(...), fim: str = Form(...), uf: str = Form("SP"),
+                                 municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+    """Puxa os itens de nota do Sienge no período, extrai os produtos (NCM) e devolve o cadastro fiscal conferido.
+    As credenciais do Sienge são usadas só nesta chamada (não são gravadas nem registradas em log)."""
+    sg = Sienge(subdominio, usuario, senha, transport=getattr(app.state, "sienge_transport", None))
+    try:
+        produtos = extrair_produtos(await sg.itens_notas(inicio, fim))
+        if not produtos:
+            raise HTTPException(404, "O Sienge não devolveu itens de nota nesse período.")
+        linhas = await pl.processar(app.state.calc, produtos, uf.upper()[:2], municipio, data)
+    except ConectorErro as e:
+        raise HTTPException(502, str(e))
+    except CalculadoraErro as e:
+        raise HTTPException(502, f"Calculadora indisponível: {e}")
+    finally:
+        await sg.fechar()
+    return Response(pl.para_csv(linhas), media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": 'attachment; filename="sienge-cadastro-fiscal.csv"',
+        "X-Resumo": json.dumps(pl.resumo(linhas)), "Access-Control-Expose-Headers": "X-Resumo"})
