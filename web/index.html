@@ -19,6 +19,9 @@ const h=chave.value?{"X-API-Key":chave.value}:{};
 try{const r=await fetch("/api/diagnosticos",{method:"POST",body:fd,headers:h});const d=await r.json();
 if(!r.ok)throw new Error(JSON.stringify(d.detail??d));
 const rel=await fetch(`/api/diagnosticos/${d.id}/relatorio.html`,{headers:h});const url=URL.createObjectURL(await rel.blob());
-msg.innerHTML=`<p>${d.itensComPendencia} de ${d.itensTotal} itens com pendência · ${d.divergencias.length} divergência(s).</p><a class="btn" target="_blank" href="${url}">Abrir relatório</a>`;
+msg.innerHTML=`<p>${d.itensComPendencia} de ${d.itensTotal} itens com pendência · ${d.divergencias.length} divergência(s).</p><a class="btn" target="_blank" href="${url}">Abrir relatório</a><br><a class="btn" id="csv" href="#">Baixar cadastro sugerido (CSV)</a>`;
+csv.onclick=async ev=>{ev.preventDefault();const r=await fetch(`/api/diagnosticos/${d.id}/sugestoes.csv`,{headers:h});
+if(!r.ok){msg.innerHTML+=`<p class="err">Não foi possível gerar o CSV (${r.status}).</p>`;return}
+const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="cadastro-sugerido.csv";a.click()};
 }catch(x){msg.innerHTML=`<span class="err">${x.message}</span>`}b.disabled=false};
 </script></body></html>

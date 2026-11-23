@@ -73,7 +73,7 @@ async def diagnosticar(nfes: list[Nfe], calc: Calculadora, o: Opcoes | None = No
     pend: dict[tuple, dict] = {}
     diverg: list[dict] = []
     avisos: list[str] = []
-    t = {"base": Decimal(0), "cbs": Decimal(0), "ibs": Decimal(0), "is": Decimal(0), "atual": Decimal(0)}
+    t = {"base": Decimal(0), "cbs": Decimal(0), "ibs": Decimal(0), "is": Decimal(0), "atual": Decimal(0), "atual_total": Decimal(0)}
     c = {"total": 0, "calc": 0, "pend": 0, "falha": 0, "conf": 0}
 
     def anotar(tipo, codigo, titulo, detalhe, sugestao, item: Item):
@@ -95,7 +95,7 @@ async def diagnosticar(nfes: list[Nfe], calc: Calculadora, o: Opcoes | None = No
         envia: list[Item] = []
         for i in nfe.itens:
             c["total"] += 1
-            t["atual"] += i.v_icms + i.v_pis + i.v_cofins + i.v_issqn
+            t["atual_total"] += i.v_icms + i.v_pis + i.v_cofins + i.v_issqn
             f = _faltando(i)
             if f:
                 anotar("CADASTRO_INCOMPLETO", "CAD-001", "Cadastro fiscal incompleto", "Faltando: " + ", ".join(f),
@@ -122,6 +122,7 @@ async def diagnosticar(nfes: list[Nfe], calc: Calculadora, o: Opcoes | None = No
             g = ((obj.get("tribCalc") or {}).get("IBSCBS") or {}).get("gIBSCBS") or {}
             if est in ("CALCULADO", "CALCULO_SIMULADO"):
                 c["calc"] += 1
+                t["atual"] += i.v_icms + i.v_pis + i.v_cofins + i.v_issqn
                 cbs, ibs = _num((g.get("gCBS") or {}).get("vCBS")), _num(g.get("vIBS"))
                 t["base"] += _num(g.get("vBC")); t["cbs"] += cbs; t["ibs"] += ibs
                 t["is"] += _num(((obj.get("tribCalc") or {}).get("IS") or {}).get("vIS"))
@@ -160,9 +161,10 @@ async def diagnosticar(nfes: list[Nfe], calc: Calculadora, o: Opcoes | None = No
         "notasLidas": len(nfes), "notasComFalha": c["falha"],
         "itensTotal": c["total"], "itensCalculados": c["calc"], "itensComPendencia": c["pend"],
         "itensConferidos": c["conf"],
+        "amostraParcial": c["calc"] < c["total"],
         "totais": {
             "baseCalculo": r2(t["base"]), "cbs": r2(t["cbs"]), "ibs": r2(t["ibs"]), "is": r2(t["is"]),
-            "cargaAtual": r2(t["atual"]), "cargaProjetada": r2(proj),
+            "cargaAtual": r2(t["atual"]), "cargaAtualTodosItens": r2(t["atual_total"]), "cargaProjetada": r2(proj),
             "variacaoPercentual": r2((proj - t["atual"]) / t["atual"] * 100) if t["atual"] > 0 else None,
         },
         "pendencias": sorted(pend.values(), key=lambda p: -p["valorTotal"]),

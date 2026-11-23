@@ -40,6 +40,17 @@ class Calculadora:
         r.raise_for_status()
         return r.json()
 
+    async def dados_abertos(self, caminho: str, **params):
+        """GET em /calculadora/dados-abertos/<caminho>; devolve JSON ou levanta CalculadoraErro."""
+        url = f"{self.base_url}/calculadora/dados-abertos/{caminho.lstrip('/')}"
+        try:
+            r = await self._c.get(url, params=params)
+        except httpx.HTTPError as e:
+            raise CalculadoraErro(f"Sem resposta da calculadora: {e}") from e
+        if r.status_code >= 400:
+            raise CalculadoraErro(f"HTTP {r.status_code} em {caminho}: {r.text[:200]}")
+        return r.json()
+
     async def fechar(self):
         await self._c.aclose()
 
@@ -69,6 +80,18 @@ def transporte_mock() -> httpx.MockTransport:
     def h(req: httpx.Request) -> httpx.Response:
         if req.url.path.endswith("/versao"):
             return httpx.Response(200, json={"aplicacao": "mock"})
+        p = req.url.path
+        if p.endswith("/situacoes-tributarias/cbs-ibs"):
+            return httpx.Response(200, json=[
+                {"codigo": "000", "descricao": "Tributação integral", "classificacoesTributarias": [
+                    {"codigo": "000001", "descricao": "Situações tributadas integralmente"}]},
+                {"codigo": "200", "descricao": "Alíquota reduzida", "classificacoesTributarias": [
+                    {"codigo": "200003", "descricao": "Cesta básica (mock)"}]}])
+        if "/nomenclatura/" in p:
+            return httpx.Response(200, json={"nomenclatura": "NCM" if p.endswith("200003") else "SEM"})
+        if p.endswith("/classificacoes-tributarias/ncm-aplicavel"):
+            q = req.url.params
+            return httpx.Response(200, json={"valido": q["ncm"].startswith("1006") and q["cClassTrib"] == "200003"})
         if req.url.path.endswith("/observabilidade/regime-geral"):
             import json
             op = json.loads(req.content)

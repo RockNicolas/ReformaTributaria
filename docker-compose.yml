@@ -14,3 +14,14 @@ services:
       API_KEYS: ${API_KEYS:-}          # ex.: API_KEYS=chave1,chave2 (vazio = sem auth, só dev)
     ports: ["8000:8000"]
     restart: unless-stopped
+
+  monitor:                    # opcional: docker compose --profile monitor up
+    build: .
+    profiles: ["monitor"]
+    depends_on: { motor: { condition: service_healthy } }
+    command: ["python", "-m", "app.monitor", "--entrada", "/dados/entrada", "--saida", "/dados/saida"]
+    environment:
+      CALCULADORA_URL: http://motor:8080/api
+      MODO_CALCULADORA: oficial
+    volumes: ["./dados:/dados"]   # coloque os XMLs em ./dados/entrada; resultados em ./dados/saida
+    restart: unless-stopped

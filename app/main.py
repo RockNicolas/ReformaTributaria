@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 
 from . import config
 from .calculadora import Calculadora, CalculadoraErro, transporte_mock
@@ -14,6 +14,7 @@ from .diagnostico import Opcoes, diagnosticar
 from .nfe import NfeInvalida, ler_nfe
 from .relatorio import renderizar
 from .seguranca import exigir_acesso
+from .sugestao import para_csv, sugerir
 from .sugestoes import sugestao_para
 
 log = logging.getLogger("reforma")
@@ -116,3 +117,49 @@ async def validar(operacao: dict):
                       for x in obj.get("erros") or []],
         })
     return {"valido": ok, "itens": itens, "modoCalculadora": app.state.calc.modo}
+
+
+CODIGOS_CADASTRO = {"CAD-001", "REG-002", "REG-004", "REG-005", "REG-006", "REG-011", "REG-029", "REG-030", "REG-033"}
+
+
+@app.get("/api/diagnosticos/{id_}/sugestoes.csv", dependencies=[Depends(exigir_acesso)])
+async def sugestoes_csv(id_: str):
+    """Planilha de cadastro sugerido (NCM -> CST + cClassTrib) para os itens com pendência."""
+    d = _obter(id_)
+    itens = [{"ncm": p["ncm"], "produto": p["descricao"]} for p in d["pendencias"]
+             if p.get("ncm") and p["codigo"] in CODIGOS_CADASTRO]
+    try:
+        linhas = await sugerir(app.state.calc, itens, (d.get("dataSimulacao") or "")[:10] or None)
+    except CalculadoraErro as e:
+        raise HTTPException(502, f"Calculadora indisponível: {e}")
+    return Response(para_csv(linhas), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="cadastro-sugerido-{id_[:8]}.csv"'})
+
+
+@app.post("/v1/sugerir-classificacao", dependencies=[Depends(exigir_acesso)])
+async def sugerir_classificacao(corpo: dict):
+    """{"ncms": ["10061010", ...], "data": "2027-03-10"} -> candidatas por NCM."""
+    ncms = corpo.get("ncms") or []
+    if not isinstance(ncms, list) or not ncms or len(ncms) > 500:
+        raise HTTPException(422, "Envie 'ncms' como lista de 1 a 500 NCMs.")
+    try:
+        linhas = await sugerir(app.state.calc, [{"ncm": str(n), "produto": ""} for n in ncms], corpo.get("data"))
+    except CalculadoraErro as e:
+        raise HTTPException(502, f"Calculadora indisponível: {e}")
+    return {"sugestoes": linhas}
+
+
+@app.post("/v1/validar-nfe", dependencies=[Depends(exigir_acesso)])
+async def validar_nfe(arquivo: UploadFile = File(...)):
+    """Validação ANTES de emitir/escriturar: confere a NF-e (XML) item a item na data da própria nota."""
+    corpo = await arquivo.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
+    try:
+        nfe = ler_nfe(corpo)
+    except NfeInvalida as e:
+        raise HTTPException(422, str(e))
+    d = await diagnosticar([nfe], app.state.calc, Opcoes(modo="conferencia"))
+    return {
+        "valida": not d["pendencias"] and not d["divergencias"] and not d["avisos"],
+        "itens": d["itensTotal"], "pendencias": d["pendencias"], "divergencias": d["divergencias"],
+        "avisos": d["avisos"], "modoCalculadora": d["modoCalculadora"],
+    }

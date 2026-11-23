@@ -34,6 +34,9 @@ def renderizar(d: dict, marca: str = "") -> str:
                + (f'<table><thead><tr><th>Item</th><th class="num">Declarado</th><th class="num">Calculado</th>'
                   f'<th class="num">Diferença</th></tr></thead><tbody>{rows}</tbody></table>'
                   if rows else "<p>Nenhuma divergência acima da tolerância.</p>"))
+    parcial = (f'<div class="aviso"><strong>Comparação parcial.</strong> Carga atual e projetada consideram apenas os '
+               f'{d["itensCalculados"]} de {d["itensTotal"]} itens calculados; os demais têm pendência. '
+               f'Carga atual de todos os itens: {brl(t["cargaAtualTodosItens"])}.</div>') if d.get("amostraParcial") else ""
     sim = ("" if conf else
            f'<div class="aviso"><strong>Estimativa.</strong> Simulação para fato gerador em {e(d["dataSimulacao"][:10])}, '
            f'com alíquotas de teste (CBS {pct(a["cbs"])}% · IBS {pct(a["ibsEstadual"] + a["ibsMunicipal"])}%). '
@@ -55,8 +58,8 @@ th{{text-align:left;font-size:10px;text-transform:uppercase;color:#56615B;paddin
 <div class="topo"><div><div class="eyebrow">{e(marca or "Diagnóstico de Impacto da Reforma")}</div><h1>{e(emp.get("nome") or "Empresa")}</h1>
 <div class="mut">CNPJ {e(emp.get("cnpj", ""))} · {e(emp.get("uf", ""))}</div></div>
 <div class="mut" style="text-align:right">Gerado em {ger}<br>{d["notasLidas"]} nota(s) · {d["itensTotal"]} item(ns)</div></div>
-{mock}{sim}
-<div class="kpis"><div class="kpi"><span class="mut">Carga atual (ICMS, PIS, COFINS, ISS)</span><b>{brl(t["cargaAtual"])}</b></div>
+{mock}{sim}{parcial}
+<div class="kpis"><div class="kpi"><span class="mut">Carga atual (ICMS, PIS, COFINS, ISS){" · itens calculados" if d.get("amostraParcial") else ""}</span><b>{brl(t["cargaAtual"])}</b></div>
 <div class="kpi"><span class="mut">Carga {"calculada" if conf else "projetada"} (CBS + IBS)</span><b>{brl(t["cargaProjetada"])}</b></div>
 <div class="kpi"><span class="mut">Variação</span><b>{var}</b></div>
 <div class="kpi"><span class="mut">Itens com pendência</span><b>{d["itensComPendencia"]} de {d["itensTotal"]}</b></div></div>

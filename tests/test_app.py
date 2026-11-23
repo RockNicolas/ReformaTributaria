@@ -97,3 +97,41 @@ def test_auth_e_limite(cliente, monkeypatch):
     assert cliente.post("/v1/validar", json=op, headers=ok).status_code == 200
     monkeypatch.setattr(config, "LIMITE_POR_MINUTO", 1)
     assert cliente.post("/v1/validar", json=op, headers=ok).status_code == 429
+
+
+def test_variacao_compara_so_itens_calculados():
+    d = asyncio.run(diagnosticar([ler_nfe(XML)], calc()))
+    assert d["amostraParcial"] is True
+    # itens calculados: 1 e 2 -> ICMS+PIS+COFINS = 180+16.5+76 + 360+33+152
+    assert d["totais"]["cargaAtual"] == 817.5 and d["totais"]["cargaAtualTodosItens"] == 817.5
+
+
+def test_sugestao_e_csv():
+    from app.sugestao import para_csv, sugerir
+    r = asyncio.run(sugerir(calc(), [{"ncm": "10061010", "produto": "Arroz"}, {"ncm": "25232910", "produto": "x"}], "2027-03-10"))
+    st = {x["ncm"]: x["status"] for x in r}
+    assert st == {"10061010": "REVISAR", "25232910": "PADRAO_PROVAVEL"}
+    assert "ncm;produto_exemplo" in para_csv(r)
+
+
+def test_endpoints_novos(cliente):
+    d = cliente.post("/api/diagnosticos", files=[("arquivos", ("a.xml", XML))]).json()
+    r = cliente.get(f"/api/diagnosticos/{d['id']}/sugestoes.csv")
+    assert r.status_code == 200 and "text/csv" in r.headers["content-type"]
+    s = cliente.post("/v1/sugerir-classificacao", json={"ncms": ["10061010"]}).json()
+    assert s["sugestoes"][0]["status"] == "REVISAR"
+    assert cliente.post("/v1/sugerir-classificacao", json={"ncms": []}).status_code == 422
+    v = cliente.post("/v1/validar-nfe", files={"arquivo": ("a.xml", XML)}).json()
+    assert v["valida"] is False and v["pendencias"]
+
+
+def test_monitor_processa_uma_vez(tmp_path):
+    import shutil
+    from app.monitor import ciclo
+    ent, sai = tmp_path / "e", tmp_path / "s"
+    ent.mkdir()
+    shutil.copy(Path(__file__).parent / "fixtures" / "nfe-exemplo.xml", ent / "n1.xml")
+    (ent / "ruim.xml").write_text("lixo")
+    r1 = asyncio.run(ciclo(calc(), ent, sai, None, "simulacao"))
+    assert r1["pendencias"] == 2 and any(p.suffix == ".html" for p in sai.iterdir())
+    assert asyncio.run(ciclo(calc(), ent, sai, None, "simulacao")) is None  # nada novo

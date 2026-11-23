@@ -10,6 +10,13 @@ Não emite nota fiscal; só lê XMLs e valida/calcula.
 - **`POST /v1/validar`:** valida uma operação e devolve erros com ação sugerida.
 - X-API-Key + limite por minuto; relatório HTML imprimível (com `?marca=` para white-label simples).
 
+## Automações
+- **Cadastro sugerido (CSV):** `GET /api/diagnosticos/{id}/sugestoes.csv` ou `POST /v1/sugerir-classificacao`. Para cada NCM, consulta o motor
+  e lista a classificação vinculada por lei (`REVISAR`) ou o padrão (`PADRAO_PROVAVEL`). O motor não decide a classificação: o contador confirma.
+- **Validar antes de emitir:** `POST /v1/validar-nfe` (XML) e `POST /v1/validar` (operação JSON).
+- **Monitor de pasta:** `docker compose --profile monitor up` processa os XMLs novos de `./dados/entrada`, gera relatório + CSV em
+  `./dados/saida` e, com `--webhook URL`, avisa quando há problema novo.
+
 ## Rodar (Docker)
 ```bash
 docker compose up --build        # 1ª vez demora: baixa o motor, gera o banco e compila
