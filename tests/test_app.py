@@ -168,3 +168,40 @@ def test_sienge_extrai_e_gera_cadastro(cliente):
     cliente.app.state.sienge_transport = httpx.MockTransport(lambda q: httpx.Response(401))
     assert cliente.post("/api/sienge/cadastro-fiscal", data={"subdominio": "x", "usuario": "u", "senha": "s",
                                                             "inicio": "a", "fim": "b"}).status_code == 502
+
+
+SPED = ("|0000|017|0|01102026|31102026|EMPRESA|12345678000195||SP|||A|1|\n"
+        "|0200|PA-001|Arroz 5kg|7894494081163||UN|04|10061010||||18|1902100|\n"
+        "|0200|PA-002|Cimento|||UN|00|2523.29.10||||18|\n"
+        "|0200|SV-001|Frete|||UN|09||||||\n|9999|5|\n").encode("latin-1")
+
+
+def test_sped_extrai_0200():
+    from app.conectores.sped import SpedInvalido, extrair_produtos
+    p = extrair_produtos(SPED)
+    assert [(x["codigo"], x["ncm"]) for x in p] == [("PA-001", "10061010"), ("PA-002", "25232910")]
+    with pytest.raises(SpedInvalido):
+        extrair_produtos(b"nao e sped")
+
+
+def test_endpoint_sped_e_zip_e_omie(cliente):
+    import httpx, io, json, zipfile
+    r = cliente.post("/api/sped/cadastro-fiscal", files={"arquivo": ("efd.txt", SPED)})
+    assert r.status_code == 200 and json.loads(r.headers["x-resumo"])["total"] == 2
+    assert cliente.post("/api/sped/cadastro-fiscal", files={"arquivo": ("x.txt", b"lixo")}).status_code == 422
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("a.xml", XML)
+        z.writestr("b.xml", "lixo")
+    d = cliente.post("/api/diagnosticos", files=[("arquivos", ("lote.zip", buf.getvalue()))]).json()
+    assert d["notasLidas"] == 1 and any("b.xml" in a for a in d["avisos"])
+
+    def h(req):
+        corpo = json.loads(req.content)
+        assert corpo["call"] == "ListarProdutos"
+        return httpx.Response(200, json={"pagina": 1, "total_de_paginas": 1, "produto_servico_cadastro": [
+            {"codigo": "A1", "descricao": "Arroz", "ncm": "1006.10.10"}]})
+    cliente.app.state.omie_transport = httpx.MockTransport(h)
+    r = cliente.post("/api/omie/cadastro-fiscal", data={"app_key": "k", "app_secret": "s"})
+    assert r.status_code == 200 and json.loads(r.headers["x-resumo"])["total"] == 1

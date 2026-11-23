@@ -1,6 +1,8 @@
 """API FastAPI: diagnóstico em lote, conferência e validação de operação."""
+import io
 import json
 import logging
+import zipfile
 import re
 from collections import OrderedDict
 from contextlib import asynccontextmanager
@@ -13,6 +15,8 @@ from . import config
 from .calculadora import Calculadora, CalculadoraErro, transporte_mock
 from .diagnostico import Opcoes, diagnosticar
 from . import planilha as pl
+from .conectores import omie as omie_con
+from .conectores import sped as sped_con
 from .conectores.sienge import ConectorErro, Sienge, extrair_produtos
 from .nfe import NfeInvalida, ler_nfe
 from .relatorio import renderizar
@@ -24,6 +28,18 @@ log = logging.getLogger("reforma")
 WEB = Path(__file__).resolve().parent.parent / "web"
 _UUID = re.compile(r"^[0-9a-f-]{36}$")
 _guardados: "OrderedDict[str, dict]" = OrderedDict()  # em memória; troque por banco em produção
+
+
+def _xmls_do_zip(corpo: bytes, max_arquivos: int = 2000, max_total: int = 200 * 1024 * 1024):
+    """Lê os .xml de um ZIP com proteção contra zip bomb (limite de quantidade e de tamanho descompactado)."""
+    try:
+        z = zipfile.ZipFile(io.BytesIO(corpo))
+    except zipfile.BadZipFile as e:
+        raise ValueError("ZIP inválido.") from e
+    infos = [i for i in z.infolist() if i.filename.lower().endswith(".xml") and not i.is_dir()]
+    if len(infos) > max_arquivos or sum(i.file_size for i in infos) > max_total:
+        raise ValueError("ZIP grande demais (máx. 2000 XMLs / 200 MB descompactado).")
+    return [(i.filename, z.read(i)) for i in infos]
 
 
 @asynccontextmanager
@@ -67,6 +83,16 @@ async def criar_diagnostico(
         corpo = await f.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
         if len(corpo) > config.MAX_UPLOAD_MB * 1024 * 1024:
             erros.append(f"{f.filename}: maior que {config.MAX_UPLOAD_MB} MB")
+            continue
+        if (f.filename or "").lower().endswith(".zip"):
+            try:
+                for nome, xml in _xmls_do_zip(corpo):
+                    try:
+                        nfes.append(ler_nfe(xml))
+                    except NfeInvalida as e:
+                        erros.append(f"{nome}: {e}")
+            except ValueError as e:
+                erros.append(f"{f.filename}: {e}")
             continue
         try:
             nfes.append(ler_nfe(corpo))
@@ -208,3 +234,39 @@ async def sienge_cadastro_fiscal(subdominio: str = Form(...), usuario: str = For
     return Response(pl.para_csv(linhas), media_type="text/csv; charset=utf-8", headers={
         "Content-Disposition": 'attachment; filename="sienge-cadastro-fiscal.csv"',
         "X-Resumo": json.dumps(pl.resumo(linhas)), "Access-Control-Expose-Headers": "X-Resumo"})
+
+
+async def _entregar(produtos: list[dict], nome: str, uf: str, municipio: int, data: str) -> Response:
+    if not produtos:
+        raise HTTPException(404, "Nenhum produto encontrado na origem informada.")
+    try:
+        linhas = await pl.processar(app.state.calc, produtos, uf.upper()[:2], municipio, data)
+    except CalculadoraErro as e:
+        raise HTTPException(502, f"Calculadora indisponível: {e}")
+    return Response(pl.para_csv(linhas), media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": f'attachment; filename="{nome}-cadastro-fiscal.csv"',
+        "X-Resumo": json.dumps(pl.resumo(linhas)), "Access-Control-Expose-Headers": "X-Resumo"})
+
+
+@app.post("/api/sped/cadastro-fiscal", dependencies=[Depends(exigir_acesso)])
+async def sped_cadastro_fiscal(arquivo: UploadFile = File(...), uf: str = Form("SP"),
+                               municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+    """Universal: o contador envia o SPED (EFD ICMS/IPI ou Contribuições); lemos o Registro 0200 (itens + NCM)."""
+    corpo = await arquivo.read(config.MAX_UPLOAD_MB * 5 * 1024 * 1024 + 1)  # SPED costuma ser grande
+    try:
+        produtos = sped_con.extrair_produtos(corpo)
+    except sped_con.SpedInvalido as e:
+        raise HTTPException(422, str(e))
+    return await _entregar(produtos, "sped", uf, municipio, data)
+
+
+@app.post("/api/omie/cadastro-fiscal", dependencies=[Depends(exigir_acesso)])
+async def omie_cadastro_fiscal(app_key: str = Form(...), app_secret: str = Form(...), uf: str = Form("SP"),
+                               municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+    """Lê os produtos do Omie (credenciais usadas só nesta chamada) e devolve o cadastro fiscal conferido."""
+    try:
+        produtos = await omie_con.listar_produtos(app_key, app_secret,
+                                                  transport=getattr(app.state, "omie_transport", None))
+    except ConectorErro as e:
+        raise HTTPException(502, str(e))
+    return await _entregar(produtos, "omie", uf, municipio, data)

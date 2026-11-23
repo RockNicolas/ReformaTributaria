@@ -12,6 +12,8 @@ Não emite nota fiscal; só lê XMLs e valida/calcula.
 
 ## Automações
 - **Planilha de produtos → cadastro fiscal pronto (principal):** `POST /api/planilha` (ou a 2ª seção da tela). CSV `codigo;descricao;ncm` entra; sai CSV com CST/cClassTrib sugeridos, conferidos no motor, com status (pronto / revisar / erro / sem NCM) e o que fazer. Exemplo: `tests/fixtures/produtos-exemplo.csv`.
+- **SPED (universal, para contadores):** `POST /api/sped/cadastro-fiscal`: lê o registro 0200 (itens + NCM) do SPED Fiscal/Contribuições; funciona com qualquer ERP.
+- **Omie:** `POST /api/omie/cadastro-fiscal` (ListarProdutos). **XMLs em ZIP** aceitos no diagnóstico.
 - **Sienge:** `POST /api/sienge/cadastro-fiscal` busca `/bulk-data/v1/invoice-itens` (NCM, produto fiscal, CST), extrai os produtos e devolve o cadastro conferido. Só clientes Sienge em nuvem. Autenticação (Basic), URL base e nomes dos campos JSON ainda **não verificados** com credenciais reais.
 - **Cadastro sugerido (CSV):** `GET /api/diagnosticos/{id}/sugestoes.csv` ou `POST /v1/sugerir-classificacao`. Para cada NCM, consulta o motor
   e lista a classificação vinculada por lei (`REVISAR`) ou o padrão (`PADRAO_PROVAVEL`). O motor não decide a classificação: o contador confirma.
