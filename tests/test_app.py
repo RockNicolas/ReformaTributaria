@@ -217,3 +217,21 @@ def test_catalogo_importar_e_xlsx(cliente):
     assert x.status_code == 200 and x.content[:2] == b"PK"
     assert cliente.post("/api/importar/nada", data={"uf": "SP"}).status_code == 404
     assert cliente.get("/").status_code == 200 and cliente.get("/static/fonts/ibm-plex-mono-latin-400-normal.woff2").status_code == 200
+
+
+def test_observabilidade_envia_data_com_hora_e_fuso():
+    import asyncio, json, httpx
+    from app.calculadora import Calculadora
+    vistos = []
+
+    def h(req):
+        vistos.append(json.loads(req.content))
+        return httpx.Response(200, json={"objetos": []})
+
+    async def rodar():
+        c = Calculadora("http://x/api", transport=httpx.MockTransport(h))
+        await c.observabilidade({"dhFatoGerador": "2027-03-15", "itens": []})
+        await c.fechar()
+
+    asyncio.run(rodar())
+    assert vistos[0]["dhFatoGerador"] == "2027-03-15T12:00:00-03:00"

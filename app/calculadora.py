@@ -16,6 +16,10 @@ class Calculadora:
 
     async def observabilidade(self, operacao: dict, tentativas: int = 3) -> dict:
         url = f"{self.base_url}/calculadora/observabilidade/regime-geral"
+        dh = operacao.get("dhFatoGerador")
+        if isinstance(dh, str) and len(dh) == 10:
+            # o motor exige data e hora com fuso (yyyy-MM-dd'T'HH:mm:ssXXX)
+            operacao = {**operacao, "dhFatoGerador": f"{dh}T12:00:00-03:00"}
         ultimo: Exception | None = None
         for t in range(tentativas):
             try:
