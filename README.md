@@ -11,6 +11,7 @@ Não emite nota fiscal; só lê XMLs e valida/calcula.
 - X-API-Key + limite por minuto; relatório HTML imprimível (com `?marca=` para white-label simples).
 
 ## Automações
+- **Planilha de produtos → cadastro fiscal pronto (principal):** `POST /api/planilha` (ou a 2ª seção da tela). CSV `codigo;descricao;ncm` entra; sai CSV com CST/cClassTrib sugeridos, conferidos no motor, com status (pronto / revisar / erro / sem NCM) e o que fazer. Exemplo: `tests/fixtures/produtos-exemplo.csv`.
 - **Cadastro sugerido (CSV):** `GET /api/diagnosticos/{id}/sugestoes.csv` ou `POST /v1/sugerir-classificacao`. Para cada NCM, consulta o motor
   e lista a classificação vinculada por lei (`REVISAR`) ou o padrão (`PADRAO_PROVAVEL`). O motor não decide a classificação: o contador confirma.
 - **Validar antes de emitir:** `POST /v1/validar-nfe` (XML) e `POST /v1/validar` (operação JSON).

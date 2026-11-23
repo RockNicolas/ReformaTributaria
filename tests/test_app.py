@@ -135,3 +135,14 @@ def test_monitor_processa_uma_vez(tmp_path):
     r1 = asyncio.run(ciclo(calc(), ent, sai, None, "simulacao"))
     assert r1["pendencias"] == 2 and any(p.suffix == ".html" for p in sai.iterdir())
     assert asyncio.run(ciclo(calc(), ent, sai, None, "simulacao")) is None  # nada novo
+
+
+def test_planilha_de_produtos(cliente):
+    csv_ = (Path(__file__).parent / "fixtures" / "produtos-exemplo.csv").read_bytes()
+    r = cliente.post("/api/planilha", files={"arquivo": ("p.csv", csv_)}, data={"uf": "SP"})
+    assert r.status_code == 200
+    import json
+    res = json.loads(r.headers["x-resumo"])
+    assert res == {"total": 4, "prontos": 1, "revisar": 1, "com_erro": 1, "sem_ncm": 1}
+    assert "cst;cclasstrib" in r.text
+    assert cliente.post("/api/planilha", files={"arquivo": ("p.csv", b"a;b\n1;2")}).status_code == 422

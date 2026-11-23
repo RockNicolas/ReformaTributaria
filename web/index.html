@@ -11,7 +11,11 @@ button{background:#0F6B4F;color:#fff;border:0;margin-top:18px;cursor:pointer;fon
 <label>Modo</label><select id="modo"><option value="simulacao">Simulação: projetar o impacto em 2027</option>
 <option value="conferencia">Conferência: comparar IBS/CBS declarado × calculado</option></select>
 <label>Chave de acesso (API key)</label><input id="chave" type="password" placeholder="deixe vazio em desenvolvimento">
-<button id="b">Gerar diagnóstico</button></form><div id="msg"></div></div></main>
+<button id="b">Gerar diagnóstico</button></form><div id="msg"></div></div><h2 style="margin-top:36px">Cadastro fiscal de produtos</h2>
+<div class="card"><p>Envie a planilha de produtos (CSV com colunas <b>codigo;descricao;ncm</b>). Você recebe de volta a planilha com CST e cClassTrib sugeridos e conferidos pelo motor da Receita, pronta para importar no ERP.</p>
+<form id="g"><label>Planilha (CSV)</label><input type="file" id="pla" accept=".csv" required>
+<label>UF da empresa</label><input id="uf" value="SP" maxlength="2">
+<button id="b2">Gerar cadastro fiscal</button></form><div id="msg2"></div></div></main>
 <script>
 f.onsubmit=async e=>{e.preventDefault();b.disabled=true;msg.textContent="Calculando…";
 const fd=new FormData();for(const x of arq.files)fd.append("arquivos",x);fd.append("modo",modo.value);
@@ -24,4 +28,12 @@ csv.onclick=async ev=>{ev.preventDefault();const r=await fetch(`/api/diagnostico
 if(!r.ok){msg.innerHTML+=`<p class="err">Não foi possível gerar o CSV (${r.status}).</p>`;return}
 const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="cadastro-sugerido.csv";a.click()};
 }catch(x){msg.innerHTML=`<span class="err">${x.message}</span>`}b.disabled=false};
+g.onsubmit=async e=>{e.preventDefault();b2.disabled=true;msg2.textContent="Conferindo no motor…";
+const fd=new FormData();fd.append("arquivo",pla.files[0]);fd.append("uf",uf.value);
+const h=chave.value?{"X-API-Key":chave.value}:{};
+try{const r=await fetch("/api/planilha",{method:"POST",body:fd,headers:h});
+if(!r.ok){const d=await r.json();throw new Error(JSON.stringify(d.detail??d))}
+const s=JSON.parse(r.headers.get("X-Resumo"));const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="cadastro-fiscal-pronto.csv";a.click();
+msg2.innerHTML=`<p><b>${s.total}</b> produtos: <b>${s.prontos}</b> prontos para importar · <b>${s.revisar}</b> para o contador revisar · <b>${s.com_erro}</b> com erro · <b>${s.sem_ncm}</b> sem NCM.</p><p>O arquivo foi baixado.</p>`;
+}catch(x){msg2.innerHTML=`<span class="err">${x.message}</span>`}b2.disabled=false};
 </script></body></html>

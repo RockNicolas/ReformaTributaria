@@ -1,4 +1,5 @@
 """API FastAPI: diagnóstico em lote, conferência e validação de operação."""
+import json
 import logging
 import re
 from collections import OrderedDict
@@ -11,6 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from . import config
 from .calculadora import Calculadora, CalculadoraErro, transporte_mock
 from .diagnostico import Opcoes, diagnosticar
+from . import planilha as pl
 from .nfe import NfeInvalida, ler_nfe
 from .relatorio import renderizar
 from .seguranca import exigir_acesso
@@ -163,3 +165,22 @@ async def validar_nfe(arquivo: UploadFile = File(...)):
         "itens": d["itensTotal"], "pendencias": d["pendencias"], "divergencias": d["divergencias"],
         "avisos": d["avisos"], "modoCalculadora": d["modoCalculadora"],
     }
+
+
+@app.post("/api/planilha", dependencies=[Depends(exigir_acesso)])
+async def planilha_produtos(arquivo: UploadFile = File(...), uf: str = Form("SP"),
+                            municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+    """Planilha de produtos (CSV com NCM) -> CSV de cadastro fiscal sugerido e conferido pelo motor."""
+    corpo = await arquivo.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
+    try:
+        produtos = pl.ler_csv(corpo)
+        linhas = await pl.processar(app.state.calc, produtos, uf.upper()[:2], municipio, data)
+    except pl.PlanilhaInvalida as e:
+        raise HTTPException(422, str(e))
+    except CalculadoraErro as e:
+        raise HTTPException(502, f"Calculadora indisponível: {e}")
+    r = pl.resumo(linhas)
+    return Response(pl.para_csv(linhas), media_type="text/csv; charset=utf-8", headers={
+        "Content-Disposition": 'attachment; filename="cadastro-fiscal-pronto.csv"',
+        "X-Resumo": json.dumps(r),
+        "Access-Control-Expose-Headers": "X-Resumo"})
