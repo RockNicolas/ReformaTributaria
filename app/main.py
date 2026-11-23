@@ -8,8 +8,9 @@ from collections import OrderedDict
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, Response
+from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .calculadora import Calculadora, CalculadoraErro, transporte_mock
@@ -61,6 +62,9 @@ async def saude():
         return {"api": "ok", "calculadora": "ok", "versao": v, "modo": app.state.calc.modo}
     except Exception as e:  # noqa: BLE001
         raise HTTPException(503, f"Calculadora indisponível: {e}")
+
+
+app.mount("/static", StaticFiles(directory=WEB), name="static")
 
 
 @app.get("/", include_in_schema=False)
@@ -270,3 +274,99 @@ async def omie_cadastro_fiscal(app_key: str = Form(...), app_secret: str = Form(
     except ConectorErro as e:
         raise HTTPException(502, str(e))
     return await _entregar(produtos, "omie", uf, municipio, data)
+
+
+# ---------- Catálogo de conexões e importação unificada (usado pela interface) ----------
+_COMUNS = [
+    {"nome": "uf", "rotulo": "UF da empresa", "tipo": "texto", "padrao": "SP"},
+    {"nome": "data", "rotulo": "Data do fato gerador simulado", "tipo": "data", "padrao": "2027-03-10"},
+]
+CONEXOES = [
+    {"id": "planilha", "nome": "Planilha de produtos", "grupo": "Arquivo", "formato": ".csv",
+     "descricao": "CSV com as colunas codigo, descricao e ncm.", "verificacao": "Testado",
+     "campos": [{"nome": "arquivo", "rotulo": "Planilha (CSV)", "tipo": "arquivo", "aceita": ".csv"}]},
+    {"id": "sped", "nome": "SPED Fiscal / Contribuições", "grupo": "Arquivo", "formato": ".txt",
+     "descricao": "Lê o cadastro de itens (registro 0200). Serve para qualquer ERP.", "verificacao": "Layout conferido",
+     "campos": [{"nome": "arquivo", "rotulo": "Arquivo SPED (.txt)", "tipo": "arquivo", "aceita": ".txt"}]},
+    {"id": "omie", "nome": "Omie", "grupo": "API", "formato": "API",
+     "descricao": "Busca os produtos cadastrados no Omie ERP.", "verificacao": "Confirmar no 1º uso",
+     "campos": [{"nome": "app_key", "rotulo": "App Key", "tipo": "texto", "segredo": False},
+                {"nome": "app_secret", "rotulo": "App Secret", "tipo": "senha", "segredo": True}]},
+    {"id": "sienge", "nome": "Sienge", "grupo": "API", "formato": "API",
+     "descricao": "Busca os itens das notas fiscais do período (apenas clientes em nuvem).", "verificacao": "Confirmar no 1º uso",
+     "campos": [{"nome": "subdominio", "rotulo": "Subdomínio", "tipo": "texto"},
+                {"nome": "usuario", "rotulo": "Usuário da API", "tipo": "texto"},
+                {"nome": "senha", "rotulo": "Senha da API", "tipo": "senha", "segredo": True},
+                {"nome": "inicio", "rotulo": "Início do período", "tipo": "data", "volatil": True},
+                {"nome": "fim", "rotulo": "Fim do período", "tipo": "data", "volatil": True}]},
+]
+
+
+@app.get("/api/conexoes", dependencies=[Depends(exigir_acesso)])
+async def catalogo():
+    return {"conexoes": CONEXOES, "parametros": _COMUNS}
+
+
+@app.post("/api/importar/{conector}", dependencies=[Depends(exigir_acesso)])
+async def importar(conector: str, request: Request):
+    """Executa um conector e devolve {resumo, linhas} em JSON (a interface exporta CSV/Excel a partir disso)."""
+    f = await request.form()
+    uf, data = str(f.get("uf") or "SP").upper()[:2], str(f.get("data") or "2027-03-10")
+    municipio = int(f.get("municipio") or 3550308)
+    try:
+        if conector in ("planilha", "sped"):
+            arq = f.get("arquivo")
+            if arq is None or not hasattr(arq, "read"):
+                raise HTTPException(422, "Envie o arquivo.")
+            corpo = await arq.read(config.MAX_UPLOAD_MB * 5 * 1024 * 1024 + 1)
+            try:
+                produtos = pl.ler_csv(corpo) if conector == "planilha" else sped_con.extrair_produtos(corpo)
+            except (pl.PlanilhaInvalida, sped_con.SpedInvalido) as e:
+                raise HTTPException(422, str(e))
+        elif conector == "omie":
+            produtos = await omie_con.listar_produtos(str(f.get("app_key") or ""), str(f.get("app_secret") or ""),
+                                                      transport=getattr(app.state, "omie_transport", None))
+        elif conector == "sienge":
+            sg = Sienge(str(f.get("subdominio") or ""), str(f.get("usuario") or ""), str(f.get("senha") or ""),
+                        transport=getattr(app.state, "sienge_transport", None))
+            try:
+                produtos = extrair_produtos(await sg.itens_notas(str(f.get("inicio") or ""), str(f.get("fim") or "")))
+            finally:
+                await sg.fechar()
+        else:
+            raise HTTPException(404, "Conexão desconhecida.")
+        if not produtos:
+            raise HTTPException(404, "Nenhum produto encontrado na origem informada.")
+        linhas = await pl.processar(app.state.calc, produtos, uf, municipio, data)
+    except ConectorErro as e:
+        raise HTTPException(502, str(e))
+    except CalculadoraErro as e:
+        raise HTTPException(502, f"Calculadora indisponível: {e}")
+    return {"conector": conector, "geradoEm": __import__("datetime").datetime.now().isoformat(),
+            "modoCalculadora": app.state.calc.modo, "resumo": pl.resumo(linhas), "linhas": linhas}
+
+
+@app.post("/api/exportar.xlsx", dependencies=[Depends(exigir_acesso)])
+async def exportar_xlsx(corpo: dict):
+    """Recebe as linhas da tela (JSON) e devolve um arquivo Excel formatado."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    linhas = corpo.get("linhas") or []
+    if not isinstance(linhas, list) or len(linhas) > 50000:
+        raise HTTPException(422, "Envie 'linhas' (até 50.000).")
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Cadastro fiscal"
+    ws.append(pl.SAIDA)
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="0F6B4F")
+    for l in linhas:
+        ws.append([str(l.get(k, "")) for k in pl.SAIDA])  # tudo como texto: preserva zeros do NCM/CST
+    for col, w in zip("ABCDEFGHIJ", (14, 38, 12, 7, 12, 40, 16, 16, 44, 56)):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="cadastro-fiscal.xlsx"'})

@@ -1,67 +1,28 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Diagnóstico da Reforma Tributária</title><style>
-body{font-family:Inter,system-ui,sans-serif;background:#F6F7F4;color:#14201B;margin:0}main{max-width:720px;margin:48px auto;padding:0 20px}
-h1{font-size:26px}.card{background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 3px #0001}
-label{display:block;margin:14px 0 4px;font-weight:600}input,select,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #cfd5cf;width:100%;box-sizing:border-box}
-button{background:#0F6B4F;color:#fff;border:0;margin-top:18px;cursor:pointer;font-weight:600}button:disabled{opacity:.6}
-#msg{margin-top:16px}a.btn{display:inline-block;margin-top:10px;color:#0F6B4F;font-weight:600}.err{color:#a11}
-</style></head><body><main><h1>Diagnóstico da Reforma Tributária</h1>
-<div class="card"><form id="f">
-<label>XMLs das notas (NF-e / NFC-e)</label><input type="file" id="arq" multiple accept=".xml" required>
-<label>Modo</label><select id="modo"><option value="simulacao">Simulação: projetar o impacto em 2027</option>
-<option value="conferencia">Conferência: comparar IBS/CBS declarado × calculado</option></select>
-<label>Chave de acesso (API key)</label><input id="chave" type="password" placeholder="deixe vazio em desenvolvimento">
-<button id="b">Gerar diagnóstico</button></form><div id="msg"></div></div><h2 style="margin-top:36px">Cadastro fiscal de produtos</h2>
-<div class="card"><p>Envie a planilha de produtos (CSV com colunas <b>codigo;descricao;ncm</b>). Você recebe de volta a planilha com CST e cClassTrib sugeridos e conferidos pelo motor da Receita, pronta para importar no ERP.</p>
-<form id="g"><label>Planilha (CSV)</label><input type="file" id="pla" accept=".csv" required>
-<label>UF da empresa</label><input id="uf" value="SP" maxlength="2">
-<button id="b2">Gerar cadastro fiscal</button></form><div id="msg2"></div></div><h2 style="margin-top:36px">Para contadores: arquivo SPED</h2>
-<div class="card"><p>Funciona com <b>qualquer sistema</b>: envie o SPED Fiscal (EFD ICMS/IPI) ou o EFD Contribuições (.txt) e lemos o cadastro de itens (registro 0200).</p>
-<form id="sp"><label>Arquivo SPED (.txt)</label><input type="file" id="spf" accept=".txt" required><button id="b4">Gerar cadastro fiscal do SPED</button></form><div id="msg4"></div></div>
-<h2 style="margin-top:36px">Direto do Omie</h2>
-<div class="card"><form id="om"><label>App Key</label><input id="omk" required><label>App Secret</label><input id="oms" type="password" required>
-<button id="b5">Buscar produtos no Omie e gerar cadastro</button></form><div id="msg5"></div></div>
-<h2 style="margin-top:36px">Direto do Sienge</h2>
-<div class="card"><p>Busca os itens das notas fiscais no Sienge (clientes em nuvem) e devolve o cadastro fiscal sugerido e conferido. As credenciais são usadas só nesta consulta e não ficam gravadas.</p>
-<form id="sg"><label>Subdomínio do Sienge</label><input id="sgsub" placeholder="ex.: minhaempresa" required>
-<label>Usuário da API</label><input id="sgusr" required><label>Senha da API</label><input id="sgpwd" type="password" required>
-<label>Período</label><div style="display:flex;gap:8px"><input type="date" id="sgi" required><input type="date" id="sgf" required></div>
-<button id="b3">Buscar no Sienge e gerar cadastro</button></form><div id="msg3"></div></div></main>
-<script>
-f.onsubmit=async e=>{e.preventDefault();b.disabled=true;msg.textContent="Calculando…";
-const fd=new FormData();for(const x of arq.files)fd.append("arquivos",x);fd.append("modo",modo.value);
-const h=chave.value?{"X-API-Key":chave.value}:{};
-try{const r=await fetch("/api/diagnosticos",{method:"POST",body:fd,headers:h});const d=await r.json();
-if(!r.ok)throw new Error(JSON.stringify(d.detail??d));
-const rel=await fetch(`/api/diagnosticos/${d.id}/relatorio.html`,{headers:h});const url=URL.createObjectURL(await rel.blob());
-msg.innerHTML=`<p>${d.itensComPendencia} de ${d.itensTotal} itens com pendência · ${d.divergencias.length} divergência(s).</p><a class="btn" target="_blank" href="${url}">Abrir relatório</a><br><a class="btn" id="csv" href="#">Baixar cadastro sugerido (CSV)</a>`;
-csv.onclick=async ev=>{ev.preventDefault();const r=await fetch(`/api/diagnosticos/${d.id}/sugestoes.csv`,{headers:h});
-if(!r.ok){msg.innerHTML+=`<p class="err">Não foi possível gerar o CSV (${r.status}).</p>`;return}
-const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="cadastro-sugerido.csv";a.click()};
-}catch(x){msg.innerHTML=`<span class="err">${x.message}</span>`}b.disabled=false};
-g.onsubmit=async e=>{e.preventDefault();b2.disabled=true;msg2.textContent="Conferindo no motor…";
-const fd=new FormData();fd.append("arquivo",pla.files[0]);fd.append("uf",uf.value);
-const h=chave.value?{"X-API-Key":chave.value}:{};
-try{const r=await fetch("/api/planilha",{method:"POST",body:fd,headers:h});
-if(!r.ok){const d=await r.json();throw new Error(JSON.stringify(d.detail??d))}
-const s=JSON.parse(r.headers.get("X-Resumo"));const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="cadastro-fiscal-pronto.csv";a.click();
-msg2.innerHTML=`<p><b>${s.total}</b> produtos: <b>${s.prontos}</b> prontos para importar · <b>${s.revisar}</b> para o contador revisar · <b>${s.com_erro}</b> com erro · <b>${s.sem_ncm}</b> sem NCM.</p><p>O arquivo foi baixado.</p>`;
-}catch(x){msg2.innerHTML=`<span class="err">${x.message}</span>`}b2.disabled=false};
-sg.onsubmit=async e=>{e.preventDefault();b3.disabled=true;msg3.textContent="Buscando no Sienge e conferindo no motor…";
-const fd=new FormData();fd.append("subdominio",sgsub.value);fd.append("usuario",sgusr.value);fd.append("senha",sgpwd.value);fd.append("inicio",sgi.value);fd.append("fim",sgf.value);
-const h=chave.value?{"X-API-Key":chave.value}:{};
-try{const r=await fetch("/api/sienge/cadastro-fiscal",{method:"POST",body:fd,headers:h});
-if(!r.ok){const d=await r.json();throw new Error(d.detail??JSON.stringify(d))}
-const s=JSON.parse(r.headers.get("X-Resumo"));const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download="sienge-cadastro-fiscal.csv";a.click();
-msg3.innerHTML=`<p><b>${s.total}</b> produtos: <b>${s.prontos}</b> prontos · <b>${s.revisar}</b> para revisar · <b>${s.com_erro}</b> com erro · <b>${s.sem_ncm}</b> sem NCM.</p>`;
-}catch(x){msg3.innerHTML=`<span class="err">${x.message}</span>`}b3.disabled=false};
-async function enviar(url,fd,msg,btn,nome){btn.disabled=true;msg.textContent="Processando e conferindo no motor…";
-const h=chave.value?{"X-API-Key":chave.value}:{};
-try{const r=await fetch(url,{method:"POST",body:fd,headers:h});
-if(!r.ok){const d=await r.json();throw new Error(d.detail??JSON.stringify(d))}
-const s=JSON.parse(r.headers.get("X-Resumo"));const a=document.createElement("a");a.href=URL.createObjectURL(await r.blob());a.download=nome;a.click();
-msg.innerHTML=`<p><b>${s.total}</b> produtos: <b>${s.prontos}</b> prontos · <b>${s.revisar}</b> para revisar · <b>${s.com_erro}</b> com erro · <b>${s.sem_ncm}</b> sem NCM.</p>`;
-}catch(x){msg.innerHTML=`<span class="err">${x.message}</span>`}btn.disabled=false}
-sp.onsubmit=e=>{e.preventDefault();const fd=new FormData();fd.append("arquivo",spf.files[0]);enviar("/api/sped/cadastro-fiscal",fd,msg4,b4,"sped-cadastro-fiscal.csv")};
-om.onsubmit=e=>{e.preventDefault();const fd=new FormData();fd.append("app_key",omk.value);fd.append("app_secret",oms.value);enviar("/api/omie/cadastro-fiscal",fd,msg5,b5,"omie-cadastro-fiscal.csv")};
-</script></body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Reforma Fiscal · Cadastro e conferência</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect x='1' y='1' width='20' height='20' rx='3' fill='%230F6B4F'/%3E%3Cpath d='M5 8h12M5 12h12M5 16h7' stroke='white' stroke-width='1.6' stroke-linecap='round'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<aside class="rail">
+  <a class="marca" href="#/novo" aria-label="Reforma Fiscal, início">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><rect x="1" y="1" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M5 8h12M5 12h12M5 16h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span>Reforma Fiscal</span>
+  </a>
+  <nav aria-label="Principal">
+    <a href="#/novo" data-rota="novo">Novo trabalho</a>
+    <a href="#/conexoes" data-rota="conexoes">Conexões</a>
+    <a href="#/historico" data-rota="historico">Histórico</a>
+    <a href="#/ajustes" data-rota="ajustes">Ajustes</a>
+  </nav>
+  <div class="rail-rodape" id="motor-estado" aria-live="polite">Verificando motor…</div>
+</aside>
+<main id="vista" tabindex="-1"></main>
+<dialog id="gaveta" aria-labelledby="gaveta-titulo"></dialog>
+<script src="/static/app.js"></script>
+</body>
+</html>

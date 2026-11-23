@@ -205,3 +205,15 @@ def test_endpoint_sped_e_zip_e_omie(cliente):
     cliente.app.state.omie_transport = httpx.MockTransport(h)
     r = cliente.post("/api/omie/cadastro-fiscal", data={"app_key": "k", "app_secret": "s"})
     assert r.status_code == 200 and json.loads(r.headers["x-resumo"])["total"] == 1
+
+
+def test_catalogo_importar_e_xlsx(cliente):
+    c = cliente.get("/api/conexoes").json()
+    assert {x["id"] for x in c["conexoes"]} == {"planilha", "sped", "omie", "sienge"}
+    csv_ = (Path(__file__).parent / "fixtures" / "produtos-exemplo.csv").read_bytes()
+    r = cliente.post("/api/importar/planilha", files={"arquivo": ("p.csv", csv_)}, data={"uf": "SP"})
+    assert r.status_code == 200 and r.json()["resumo"]["total"] == 4
+    x = cliente.post("/api/exportar.xlsx", json={"linhas": r.json()["linhas"]})
+    assert x.status_code == 200 and x.content[:2] == b"PK"
+    assert cliente.post("/api/importar/nada", data={"uf": "SP"}).status_code == 404
+    assert cliente.get("/").status_code == 200 and cliente.get("/static/fonts/ibm-plex-mono-latin-400-normal.woff2").status_code == 200
