@@ -312,7 +312,7 @@ async def importar(conector: str, request: Request):
     """Executa um conector e devolve {resumo, linhas} em JSON (a interface exporta CSV/Excel a partir disso)."""
     f = await request.form()
     uf, data = str(f.get("uf") or "SP").upper()[:2], str(f.get("data") or "2027-03-10")
-    municipio = int(f.get("municipio") or 3550308)
+    municipio = int(f.get("municipio") or 0)
     try:
         if conector in ("planilha", "sped"):
             arq = f.get("arquivo")
