@@ -200,7 +200,7 @@ async def validar_nfe(arquivo: UploadFile = File(...)):
 
 @app.post("/api/planilha", dependencies=[Depends(exigir_acesso)])
 async def planilha_produtos(arquivo: UploadFile = File(...), uf: str = Form("SP"),
-                            municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+                            municipio: int = Form(0), data: str = Form("2027-03-10")):
     """Planilha de produtos (CSV com NCM) -> CSV de cadastro fiscal sugerido e conferido pelo motor."""
     corpo = await arquivo.read(config.MAX_UPLOAD_MB * 1024 * 1024 + 1)
     try:
@@ -220,7 +220,7 @@ async def planilha_produtos(arquivo: UploadFile = File(...), uf: str = Form("SP"
 @app.post("/api/sienge/cadastro-fiscal", dependencies=[Depends(exigir_acesso)])
 async def sienge_cadastro_fiscal(subdominio: str = Form(...), usuario: str = Form(...), senha: str = Form(...),
                                  inicio: str = Form(...), fim: str = Form(...), uf: str = Form("SP"),
-                                 municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+                                 municipio: int = Form(0), data: str = Form("2027-03-10")):
     """Puxa os itens de nota do Sienge no período, extrai os produtos (NCM) e devolve o cadastro fiscal conferido.
     As credenciais do Sienge são usadas só nesta chamada (não são gravadas nem registradas em log)."""
     sg = Sienge(subdominio, usuario, senha, transport=getattr(app.state, "sienge_transport", None))
@@ -254,7 +254,7 @@ async def _entregar(produtos: list[dict], nome: str, uf: str, municipio: int, da
 
 @app.post("/api/sped/cadastro-fiscal", dependencies=[Depends(exigir_acesso)])
 async def sped_cadastro_fiscal(arquivo: UploadFile = File(...), uf: str = Form("SP"),
-                               municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+                               municipio: int = Form(0), data: str = Form("2027-03-10")):
     """Universal: o contador envia o SPED (EFD ICMS/IPI ou Contribuições); lemos o Registro 0200 (itens + NCM)."""
     corpo = await arquivo.read(config.MAX_UPLOAD_MB * 5 * 1024 * 1024 + 1)  # SPED costuma ser grande
     try:
@@ -266,7 +266,7 @@ async def sped_cadastro_fiscal(arquivo: UploadFile = File(...), uf: str = Form("
 
 @app.post("/api/omie/cadastro-fiscal", dependencies=[Depends(exigir_acesso)])
 async def omie_cadastro_fiscal(app_key: str = Form(...), app_secret: str = Form(...), uf: str = Form("SP"),
-                               municipio: int = Form(3550308), data: str = Form("2027-03-10")):
+                               municipio: int = Form(0), data: str = Form("2027-03-10")):
     """Lê os produtos do Omie (credenciais usadas só nesta chamada) e devolve o cadastro fiscal conferido."""
     try:
         produtos = await omie_con.listar_produtos(app_key, app_secret,

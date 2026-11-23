@@ -4,6 +4,19 @@ import asyncio
 import httpx
 
 
+def _detalhe(r) -> str:
+    """Mensagem curta do erro do motor, com os códigos REG-xxx quando houver."""
+    try:
+        j = r.json()
+        erros = j.get("errors") or []
+        partes = [str(e.get("detail") or e.get("title") or e.get("type") or e)[:200] for e in erros if isinstance(e, dict)]
+        if partes:
+            return f"HTTP {r.status_code}: " + " | ".join(partes)[:500]
+        return f"HTTP {r.status_code}: {j.get('detail') or j.get('title') or r.text[:300]}"
+    except Exception:
+        return f"HTTP {r.status_code}: {r.text[:300]}"
+
+
 class CalculadoraErro(RuntimeError):
     pass
 
@@ -28,7 +41,7 @@ class Calculadora:
                     raise CalculadoraErro(f"HTTP {r.status_code}: {r.text[:300]}")
                 if r.status_code >= 400:
                     # erro de contrato (4xx): repetir não adianta
-                    raise CalculadoraErro(f"HTTP {r.status_code}: {r.text[:300]}")
+                    raise CalculadoraErro(_detalhe(r))
                 return r.json()
             except httpx.HTTPError as e:
                 ultimo = CalculadoraErro(f"Sem resposta da calculadora em {self.base_url}: {e}")

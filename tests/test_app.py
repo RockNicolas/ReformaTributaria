@@ -235,3 +235,8 @@ def test_observabilidade_envia_data_com_hora_e_fuso():
 
     asyncio.run(rodar())
     assert vistos[0]["dhFatoGerador"] == "2027-03-15T12:00:00-03:00"
+
+
+def test_municipio_padrao_e_a_capital_da_uf():
+    from app.ufs import CAPITAIS
+    assert len(CAPITAIS) == 27 and CAPITAIS["CE"] == 2304400

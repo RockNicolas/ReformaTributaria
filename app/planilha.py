@@ -13,6 +13,7 @@ import unicodedata
 from . import config
 from .calculadora import Calculadora, CalculadoraErro
 from .sugestao import sugerir
+from .ufs import CAPITAIS
 from .sugestoes import sugestao_para
 
 SAIDA = ["codigo", "descricao", "ncm", "cst", "cclasstrib", "descricao_classificacao",
@@ -65,6 +66,7 @@ def ler_csv(conteudo: bytes) -> list[dict]:
 
 
 async def processar(calc: Calculadora, produtos: list[dict], uf: str, municipio: int, data: str) -> list[dict]:
+    municipio = municipio or CAPITAIS.get(uf.upper(), 3550308)
     validos = {p["ncm"] for p in produtos if len(p["ncm"]) == 8}
     sug = {s["ncm"]: s for s in await sugerir(
         calc, [{"ncm": n, "produto": ""} for n in sorted(validos)], data)}
